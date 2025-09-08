@@ -57,6 +57,7 @@ UART_HandleTypeDef huart6;
 
 /* USER CODE BEGIN PV */
 #define RX_BUF_SIZE 256
+#define ARR_CNT 4
 char rxBuf[RX_BUF_SIZE];
 volatile uint8_t rx_ch;
 volatile uint8_t rx_index;
@@ -72,7 +73,7 @@ static void MX_USART6_UART_Init(void);
 static void MX_TIM3_Init(void);
 static void MX_TIM2_Init(void);
 /* USER CODE BEGIN PFP */
-void processMessage(const char *msg);
+void processMessage(char *msg);
 void servo_unlock(void);
 void servo_lock(void);
 void send_status(const char *status);
@@ -84,8 +85,75 @@ void servo_setAngle(uint8_t angle);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-void processMessage(const char *msg)	/* 들어오는 메시지 처리 */
+void processMessage(char *msg)	/* 들어오는 메시지 처리 */
 {
+/*=========문자열 파싱=========*/
+	int i = 0;
+	char * pToken;
+	char * pArray[ARR_CNT]={0};
+
+	printf("Original Received : %s\r\n", msg);
+
+	pToken = strtok(msg,":");
+	while(pToken != NULL)
+	{
+	    pArray[i] = pToken;
+	    if(++i >= ARR_CNT)
+	      break;
+	    pToken = strtok(NULL,":");
+	}
+	if(!strcmp(pArray[2],"DRAWER"))
+	{
+	 	if(!strcmp(pArray[3],"UNLOCK"))
+	  	{
+	  		printf(">>>>>debug : unlock\r\n");
+//			servo_unlock();		// 서랍 잠금해제
+//			send_status("unlocked success\n");	// 상태 회신 : 잠금해제 성공
+	  	}
+		else if(!strcmp(pArray[3],"LOCK"))
+		{
+			printf(">>>>>debug : lock\r\n");
+//			servo_lock();		// 서랍 잠금
+//			send_status("locked success\n");	// 상태 회신 : 잠금 성공
+
+		}
+	}
+	if(!strcmp(pArray[2],"SLP"))
+	{
+	 	if(!strcmp(pArray[3],"ON"))
+	  	{
+	  		printf(">>>>>debug : sleeping \r\n");
+//		    for(int i = 0; i < 5; i ++)
+//		    {
+//			    Vib_PulsePattern(); // "두두둑" 패턴 실행
+//			    HAL_Delay(800);
+//		    }
+//		    send_status("vibration success\n");	// 상태 회신 : 진동 성공
+
+	  	}
+		else if(!strcmp(pArray[3],"OFF"))
+		{
+			printf(">>>>>debug : No sleeping \r\n");
+		}
+	}
+	if(!strcmp(pArray[2],"POSTURE"))
+	{
+	 	if(!strcmp(pArray[3],"BAD"))
+	  	{
+	  		printf(">>>>>debug : bad posture \r\n");
+//			__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_3, 2200);
+//			send_status("monitor tilted up\n");	// 상태 회신 : 모니터 강제 조절 성공
+
+	  	}
+		else if(!strcmp(pArray[3],"OK"))
+		{
+			printf(">>>>>debug : good posture \r\n");
+//			__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_3, 2500);
+//			send_status("monitor reset\n");	// 상태 회신 : 모니터 원상복구
+		}
+	}
+
+#if 1
 	if(strcmp(msg, "unlock") == 0)
 	{
 		servo_unlock();		// 서랍 잠금해제
@@ -111,7 +179,6 @@ void processMessage(const char *msg)	/* 들어오는 메시지 처리 */
 	{
 		printf("Running monitor reset...\r\n");
 		__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_3, 2500);
-
 		send_status("monitor reset\n");	// 상태 회신 : 모니터 원상복구
 	}
 
@@ -119,14 +186,10 @@ void processMessage(const char *msg)	/* 들어오는 메시지 처리 */
 	{
 		printf("Running monitor tilt...\r\n");
 		__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_3, 2200);
-
 		send_status("monitor tilted up\n");	// 상태 회신 : 모니터 강제 조절 성공
 	}
+#endif
 
-//	else if(strcmp(msg, "0") == 0)		// 180도
-//	{
-//		__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_3, 500);
-//	}
 }
 
 void send_status(const char *status)	/* 메시지 전송 */
@@ -165,7 +228,7 @@ void Motor_SetDutyPercent(uint8_t percent) {
 // 예: 진동 패턴
 void Vib_PulsePattern(void) {
     for (int i=0;i<3;i++) {
-        Motor_SetDutyPercent(80); HAL_Delay(500);
+        Motor_SetDutyPercent(50); HAL_Delay(500);
         Motor_SetDutyPercent(0);  HAL_Delay(100);
     }
 }
@@ -248,8 +311,6 @@ int main(void)
 	  {
 		  uart6_flag = 0;
 		  rxBuf[rx_index] = '\0';
-
-		  printf("Received : %s\r\n", rxBuf);
 
 		  processMessage(rxBuf);   // 메시지 처리
 
