@@ -54,6 +54,8 @@ TIM_HandleTypeDef htim3;
 
 UART_HandleTypeDef huart2;
 UART_HandleTypeDef huart6;
+DMA_HandleTypeDef hdma_usart6_rx;
+DMA_HandleTypeDef hdma_usart6_tx;
 
 /* USER CODE BEGIN PV */
 #define RX_BUF_SIZE 256
@@ -61,13 +63,21 @@ UART_HandleTypeDef huart6;
 char rxBuf[RX_BUF_SIZE];
 volatile uint8_t rx_ch;
 volatile uint8_t rx_index;
-volatile uint8_t uart6_flag = 0;
+uint8_t uart6_flag = 0;
+uint8_t uart6_rx_len = 0;
+volatile uint8_t vib_flag = 0;	// 진동 기능 flag
+volatile uint8_t vib_repeat = 0;	// 패턴 반복 횟수
+static volatile uint8_t old = 0;
+char msg_temp[RX_BUF_SIZE];
+char* msg = msg_temp;
+
 
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
+static void MX_DMA_Init(void);
 static void MX_USART2_UART_Init(void);
 static void MX_USART6_UART_Init(void);
 static void MX_TIM3_Init(void);
@@ -78,14 +88,14 @@ void servo_unlock(void);
 void servo_lock(void);
 void send_status(const char *status);
 void Motor_SetDutyPercent(uint8_t percent);
-void Vib_PulsePattern(void);
+int Vib_PulsePattern(void);
 void servo_setAngle(uint8_t angle);
 
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-void processMessage(char *msg)	/* 들어오는 메시지 처리 */
+void processMessage(char* msg)	/* 들어오는 메시지 처리 */
 {
 /*=========문자열 파싱=========*/
 	int i = 0;
@@ -167,12 +177,14 @@ void processMessage(char *msg)	/* 들어오는 메시지 처리 */
 	else if(strcmp(msg, "sleeping") == 0)
 	{
 	    printf("Running Vibration...\r\n");
-	    for(int i = 0; i < 5; i ++)
-	    {
-		    Vib_PulsePattern(); // "두두둑" 패턴 실행
-		    HAL_Delay(800);
-	    }
-	    send_status("vibration success\n");	// 상태 회신 : 진동 성공
+//	    for(int i = 0; i < 5; i ++)
+//	    {
+//		    Vib_PulsePattern(); // "두두둑" 패턴 실행
+//		    HAL_Delay(800);
+//	    }
+	    vib_repeat = 5;		// 5번 반복
+	    vib_flag = 1;		// 진동 시작
+	    send_status("vibration started\n");	// 상태 회신 : 진동 성공
 	}
 
 	else if(strcmp(msg, "2") == 0)		// 좋은 자세일 때
@@ -226,11 +238,56 @@ void Motor_SetDutyPercent(uint8_t percent) {
 }
 
 // 예: 진동 패턴
-void Vib_PulsePattern(void) {
-    for (int i=0;i<3;i++) {
-        Motor_SetDutyPercent(50); HAL_Delay(500);
-        Motor_SetDutyPercent(0);  HAL_Delay(100);
-    }
+int Vib_PulsePattern(void) {
+	static uint32_t last_tick = 0;
+	static int state = 0;
+	static int pulse_count = 0;
+
+	uint32_t now = HAL_GetTick();
+
+
+	switch(state)
+	{
+		case 0:		// 모터 on
+			Motor_SetDutyPercent(70);
+			last_tick = now;	// 현재 시간을 저장
+			pulse_count = 0;
+			state = 1;
+			break;
+		case 1:		// on 500ms -> off
+			if(now - last_tick >= 500)
+			{
+				Motor_SetDutyPercent(0);
+				last_tick = now;
+				state = 2;
+			}
+			break;
+		case 2:		// off 300 ms -> on
+		{
+			if(now - last_tick >= 300)	// 100ms 동안 쉬기
+			{
+				pulse_count++;
+				if(pulse_count < 3)
+				{
+					Motor_SetDutyPercent(50);
+					last_tick = now;
+					state = 1;
+				}
+				else
+				{
+					state = 0;	// 다시 모터 on
+					return 1;
+				}
+			}
+			break;
+		}
+	}
+	return 0;
+
+//    for (int i=0;i<3;i++) {
+//        Motor_SetDutyPercent(50); HAL_Delay(500);
+//        Motor_SetDutyPercent(0);  HAL_Delay(100);
+//    }
 }
 
 /*================== 모니터 조절 기능 ==================*/
@@ -282,6 +339,7 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
+  MX_DMA_Init();
   MX_USART2_UART_Init();
   MX_USART6_UART_Init();
   MX_TIM3_Init();
@@ -299,7 +357,10 @@ int main(void)
   if(HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_2) != HAL_OK)
 	  Error_Handler();
 
-  HAL_UART_Receive_IT(&huart6, (uint8_t*)&rx_ch, 1);
+//  HAL_UART_Receive_IT(&huart6, (uint8_t*)&rx_ch, 1);
+  __HAL_UART_ENABLE_IT(&huart6, UART_IT_IDLE);	// IDLE 인터럽트 활성화
+  HAL_UART_Receive_DMA(&huart6, (uint8_t*)rxBuf, RX_BUF_SIZE);
+
 
   /* USER CODE END 2 */
 
@@ -307,15 +368,48 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
+	  //memset(msg_temp, 0, sizeof(msg_temp));
 	  if(uart6_flag)
 	  {
 		  uart6_flag = 0;
-		  rxBuf[rx_index] = '\0';
 
-		  processMessage(rxBuf);   // 메시지 처리
+	      // 수신된 길이 계산
+		  uart6_rx_len = RX_BUF_SIZE - __HAL_DMA_GET_COUNTER(huart6.hdmarx);
+	      if(uart6_rx_len == 0)	return;		// 메시지 없으면 무시
 
-	      rx_index = 0;            // 버퍼 인덱스 초기화
+	      // 메시지 끝 개행(\n) 제거
+	      if(rxBuf[uart6_rx_len - 1] == '\n') uart6_rx_len--;
+
+	      // 화면 출력
+	      if(uart6_rx_len > old)
+	      {
+	    	  printf(">>Received: %.*s\r\n", uart6_rx_len-old, &rxBuf[old]);
+	    	  memcpy(msg_temp, &rxBuf[old], uart6_rx_len-old);
+	      }
+	      else
+	      {
+		      printf("Received: %.*s", RX_BUF_SIZE-old, &rxBuf[old]);
+		      memcpy(msg_temp, &rxBuf[old], RX_BUF_SIZE-old);
+		      if(uart6_rx_len) {
+		    	  printf("%.*s", uart6_rx_len, &rxBuf[0]);
+		    	  memcpy(msg_temp, &rxBuf[old], uart6_rx_len);
+		      }
+		      printf("\r\n");
+	      }
+	      processMessage(msg_temp);
+	      old = uart6_rx_len+1;
+
+	      memset(msg_temp, 0, sizeof(msg_temp));
 	  }
+
+	 if(vib_flag)
+	 {
+		 if(Vib_PulsePattern())
+		 {
+			 vib_repeat--;
+			 if(vib_repeat <= 0) { vib_flag = 0; }
+		 }
+	 }
 
     /* USER CODE END WHILE */
 
@@ -547,6 +641,25 @@ static void MX_USART6_UART_Init(void)
 }
 
 /**
+  * Enable DMA controller clock
+  */
+static void MX_DMA_Init(void)
+{
+
+  /* DMA controller clock enable */
+  __HAL_RCC_DMA2_CLK_ENABLE();
+
+  /* DMA interrupt init */
+  /* DMA2_Stream1_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA2_Stream1_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(DMA2_Stream1_IRQn);
+  /* DMA2_Stream6_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA2_Stream6_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(DMA2_Stream6_IRQn);
+
+}
+
+/**
   * @brief GPIO Initialization Function
   * @param None
   * @retval None
@@ -600,25 +713,45 @@ PUTCHAR_PROTOTYPE
   return ch;
 }
 
-void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
-{
-	if(huart->Instance == USART6)	// USART6에서 인터럽트 발생했을 때 처리
-	{
-		if(rx_ch == '\n')
-		{
-			uart6_flag = 1;
-		}
-		else
-		{
-			if(rx_index < RX_BUF_SIZE -1)
-			{
-				rxBuf[rx_index++] = rx_ch;
-			}
-		}
+//void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
+//{
+//	if(huart->Instance == USART6)	// USART6에서 인터럽트 발생했을 때 처리
+//	{
+//		if(rx_ch == '\n')
+//		{
+//			uart6_flag = 1;
+//		}
+//		else
+//		{
+//			if(rx_index < RX_BUF_SIZE -1)
+//			{
+//				rxBuf[rx_index++] = rx_ch;
+//			}
+//		}
+//
+//		HAL_UART_Receive_IT(&huart6, (uint8_t*)&rx_ch, 1);	// 다시 수신 요청
+//	}
+//}
 
-		HAL_UART_Receive_IT(&huart6, (uint8_t*)&rx_ch, 1);	// 다시 수신 요청
-	}
-}
+//void USART6_IRQHandler(void)
+//{
+//    HAL_UART_IRQHandler(&huart6);  // DMA RX 처리
+//
+//    if(__HAL_UART_GET_FLAG(&huart6, UART_FLAG_IDLE))
+//    {
+//        __HAL_UART_CLEAR_IDLEFLAG(&huart6);
+//        uart6_flag = 1;
+//
+////        // 메시지 길이 계산
+////        uint16_t len = RX_BUF_SIZE - __HAL_DMA_GET_COUNTER(huart6.hdmarx);
+////
+////        // UART2 DMA 전송
+////        HAL_UART_Transmit_DMA(&huart2, (uint8_t*)rxBuf, len);
+////
+////        // 필요 시 버퍼 초기화
+////        memset(rxBuf, 0, RX_BUF_SIZE);
+//    }
+//}
 
 /* USER CODE END 4 */
 
