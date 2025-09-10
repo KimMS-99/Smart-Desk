@@ -235,11 +235,10 @@ void DMA2_Stream6_IRQHandler(void)
 void USART6_IRQHandler(void)
 {
   /* USER CODE BEGIN USART6_IRQn 0 */
-	  if (__HAL_UART_GET_FLAG(&huart6, UART_FLAG_IDLE)) {
-	      __HAL_UART_CLEAR_IDLEFLAG(&huart6);
-
-    	  uart6_flag = 1;  // main 루프에서 처리
-	  }
+//	  if (__HAL_UART_GET_FLAG(&huart6, UART_FLAG_IDLE)) {
+//	      __HAL_UART_CLEAR_IDLEFLAG(&huart6);
+//    	  uart6_flag = 1;  // main 루프에서 처리
+//	  }
   /* USER CODE END USART6_IRQn 0 */
   HAL_UART_IRQHandler(&huart6);
   /* USER CODE BEGIN USART6_IRQn 1 */

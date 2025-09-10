@@ -23,6 +23,7 @@
 /* USER CODE BEGIN Includes */
 #include <stdio.h>
 #include <string.h>
+#include "mfrc522.h"
 
 /* USER CODE END Includes */
 
@@ -49,6 +50,8 @@
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
+SPI_HandleTypeDef hspi2;
+
 TIM_HandleTypeDef htim2;
 TIM_HandleTypeDef htim3;
 
@@ -59,8 +62,10 @@ DMA_HandleTypeDef hdma_usart6_tx;
 
 /* USER CODE BEGIN PV */
 #define RX_BUF_SIZE 256
+#define TX_BUF_SIZE 256
 #define ARR_CNT 4
-char rxBuf[RX_BUF_SIZE];
+uint8_t rxBuf[RX_BUF_SIZE];
+
 volatile uint8_t rx_ch;
 volatile uint8_t rx_index;
 uint8_t uart6_flag = 0;
@@ -71,6 +76,18 @@ static volatile uint8_t old = 0;
 char msg_temp[RX_BUF_SIZE];
 char* msg = msg_temp;
 
+// RFID
+uint8_t cardID[5];
+char uid_str[16];
+static volatile int authentication_flag = 0;
+static volatile int auth_start_time = -1; // 인증 시작 시점의 tim3Sec 저장
+static uint8_t card_present = 0;
+
+uint8_t status;
+uint8_t str[16];
+uint8_t sNum[5];
+
+char uid_msg[TX_BUF_SIZE];
 
 /* USER CODE END PV */
 
@@ -82,6 +99,7 @@ static void MX_USART2_UART_Init(void);
 static void MX_USART6_UART_Init(void);
 static void MX_TIM3_Init(void);
 static void MX_TIM2_Init(void);
+static void MX_SPI2_Init(void);
 /* USER CODE BEGIN PFP */
 void processMessage(char *msg);
 void servo_unlock(void);
@@ -95,9 +113,11 @@ void servo_setAngle(uint8_t angle);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-void processMessage(char* msg)	/* 들어오는 메시지 처리 */
+
+/* 들어오는 메시지 처리 */
+void processMessage(char* msg)
 {
-/*=========문자열 파싱=========*/
+	/*=== 문자열 파싱 ===*/
 	int i = 0;
 	char * pToken;
 	char * pArray[ARR_CNT]={0};
@@ -117,15 +137,14 @@ void processMessage(char* msg)	/* 들어오는 메시지 처리 */
 	 	if(!strcmp(pArray[3],"UNLOCK"))
 	  	{
 	  		printf(">>>>>debug : unlock\r\n");
-//			servo_unlock();		// 서랍 잠금해제
-//			send_status("unlocked success\n");	// 상태 회신 : 잠금해제 성공
+			servo_unlock();		// 서랍 잠금해제
+			send_status("unlocked success\n");	// 상태 회신 : 잠금해제 성공
 	  	}
 		else if(!strcmp(pArray[3],"LOCK"))
 		{
 			printf(">>>>>debug : lock\r\n");
-//			servo_lock();		// 서랍 잠금
-//			send_status("locked success\n");	// 상태 회신 : 잠금 성공
-
+			servo_lock();		// 서랍 잠금
+			send_status("locked success\n");	// 상태 회신 : 잠금 성공
 		}
 	}
 	if(!strcmp(pArray[2],"SLP"))
@@ -139,6 +158,9 @@ void processMessage(char* msg)	/* 들어오는 메시지 처리 */
 //			    HAL_Delay(800);
 //		    }
 //		    send_status("vibration success\n");	// 상태 회신 : 진동 성공
+		    vib_repeat = 5;		// 5번 반복
+		    vib_flag = 1;		// 진동 시작
+		    send_status("vibration started\n");	// 상태 회신 : 진동 성공
 
 	  	}
 		else if(!strcmp(pArray[3],"OFF"))
@@ -151,15 +173,14 @@ void processMessage(char* msg)	/* 들어오는 메시지 처리 */
 	 	if(!strcmp(pArray[3],"BAD"))
 	  	{
 	  		printf(">>>>>debug : bad posture \r\n");
-//			__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_3, 2200);
-//			send_status("monitor tilted up\n");	// 상태 회신 : 모니터 강제 조절 성공
-
+			__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_3, 2200);
+			send_status("monitor tilted up\n");	// 상태 회신 : 모니터 강제 조절 성공
 	  	}
 		else if(!strcmp(pArray[3],"OK"))
 		{
 			printf(">>>>>debug : good posture \r\n");
-//			__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_3, 2500);
-//			send_status("monitor reset\n");	// 상태 회신 : 모니터 원상복구
+			__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_3, 2500);
+			send_status("monitor reset\n");	// 상태 회신 : 모니터 원상복구
 		}
 	}
 
@@ -200,11 +221,18 @@ void processMessage(char* msg)	/* 들어오는 메시지 처리 */
 		__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_3, 2200);
 		send_status("monitor tilted up\n");	// 상태 회신 : 모니터 강제 조절 성공
 	}
+	else if(strcmp(msg, "test") == 0)
+	{
+        // Pi로 전송
+        HAL_UART_Transmit(&huart6, (uint8_t*)uid_str, strlen(uid_str), HAL_MAX_DELAY);
+        HAL_UART_Transmit(&huart6, (uint8_t*)"\n", 1, HAL_MAX_DELAY);
+	}
 #endif
 
 }
 
-void send_status(const char *status)	/* 메시지 전송 */
+/* 메시지 전송 */
+void send_status(const char *status)
 {
 	HAL_UART_Transmit(&huart6, (uint8_t*)status, strlen(status), HAL_MAX_DELAY);
 }
@@ -237,7 +265,7 @@ void Motor_SetDutyPercent(uint8_t percent) {
     __HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_2, ccr);
 }
 
-// 예: 진동 패턴
+// 진동 패턴 구현
 int Vib_PulsePattern(void) {
 	static uint32_t last_tick = 0;
 	static int state = 0;
@@ -245,37 +273,36 @@ int Vib_PulsePattern(void) {
 
 	uint32_t now = HAL_GetTick();
 
-
 	switch(state)
 	{
 		case 0:		// 모터 on
-			Motor_SetDutyPercent(70);
+			Motor_SetDutyPercent(70);	// 70%로 모터 동작
 			last_tick = now;	// 현재 시간을 저장
-			pulse_count = 0;
+			pulse_count = 0;	// 강약 반복 횟수
 			state = 1;
 			break;
 		case 1:		// on 500ms -> off
-			if(now - last_tick >= 500)
+			if(now - last_tick >= 500)	// 500ms 넘어가면
 			{
-				Motor_SetDutyPercent(0);
+				Motor_SetDutyPercent(0);	// 0%로 모터 동작
 				last_tick = now;
 				state = 2;
 			}
 			break;
 		case 2:		// off 300 ms -> on
 		{
-			if(now - last_tick >= 300)	// 100ms 동안 쉬기
+			if(now - last_tick >= 300)	// 300ms 넘어가면
 			{
 				pulse_count++;
 				if(pulse_count < 3)
 				{
-					Motor_SetDutyPercent(50);
+					Motor_SetDutyPercent(50);	// 50%로 모터 동작
 					last_tick = now;
 					state = 1;
 				}
-				else
+				else		// 강약 반복 3번 넘어가면
 				{
-					state = 0;	// 다시 모터 on
+					state = 0;
 					return 1;
 				}
 			}
@@ -318,6 +345,8 @@ int main(void)
 {
 
   /* USER CODE BEGIN 1 */
+	uint8_t status;
+	uint8_t str[16];
 
   /* USER CODE END 1 */
 
@@ -344,8 +373,10 @@ int main(void)
   MX_USART6_UART_Init();
   MX_TIM3_Init();
   MX_TIM2_Init();
+  MX_SPI2_Init();
   /* USER CODE BEGIN 2 */
   printf("main start()!!\r\n");
+
   if(HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_1) != HAL_OK)
 	  Error_Handler();
   if(HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_2) != HAL_OK)
@@ -357,10 +388,18 @@ int main(void)
   if(HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_2) != HAL_OK)
 	  Error_Handler();
 
+  /*=== 인터럽트 방식 ===*/
 //  HAL_UART_Receive_IT(&huart6, (uint8_t*)&rx_ch, 1);
-  __HAL_UART_ENABLE_IT(&huart6, UART_IT_IDLE);	// IDLE 인터럽트 활성화
-  HAL_UART_Receive_DMA(&huart6, (uint8_t*)rxBuf, RX_BUF_SIZE);
 
+  /*=== DMA 방식 ===*/
+//  __HAL_UART_ENABLE_IT(&huart6, UART_IT_IDLE);	// IDLE 인터럽트 활성화
+//  HAL_UART_Receive_DMA(&huart6, (uint8_t*)rxBuf, RX_BUF_SIZE);
+// 	-> 옛날 방식
+  HAL_UARTEx_ReceiveToIdle_DMA(&huart6, rxBuf, RX_BUF_SIZE);
+
+
+  /*=== RFID ===*/
+	MFRC522_Init();                               // RC522 초기화
 
   /* USER CODE END 2 */
 
@@ -368,25 +407,50 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-	  //memset(msg_temp, 0, sizeof(msg_temp));
+//========= RFID 체크 ===============
+		status = MFRC522_Request(PICC_REQIDL, str);		// 카드 타입
+
+		if (status == MI_OK && card_present == 0)   // 카드가 감지됨
+		{
+		    status = MFRC522_Anticoll(str);			// 카드 UID : str[0] ~ [4]에 저장
+		    if (status == MI_OK)   // UID 읽기 성공
+		    {
+		    	card_present = 1;	// 카드 감지된 상태
+
+		        // UID를 문자열로 변환
+	            sprintf(uid_str, "%02X%02X%02X%02X", str[0], str[1], str[2], str[3]);
+	            printf("Card UID: %s\r\n", uid_str);
+
+	            sprintf(uid_msg, "STM32:none:RFID:%s\n", uid_str);
+	            printf("uid_msg : %s\r\n", uid_msg);
+
+	            // Pi로 전송
+	            send_status(uid_msg);
+
+	            HAL_Delay(5000);
+	            card_present = 0;	// 카드 인식되지 않은 상태
+		    }
+		}
+
+//========= pi에서 메시지 들어온 경우 처리 ================
+// 	-> 옛날 방식
+#if 0
 	  if(uart6_flag)
 	  {
 		  uart6_flag = 0;
 
-	      // 수신된 길이 계산
-		  uart6_rx_len = RX_BUF_SIZE - __HAL_DMA_GET_COUNTER(huart6.hdmarx);
-	      if(uart6_rx_len == 0)	return;		// 메시지 없으면 무시
-
-	      // 메시지 끝 개행(\n) 제거
-	      if(rxBuf[uart6_rx_len - 1] == '\n') uart6_rx_len--;
+		//=== DMA 처리 ===
+		  uart6_rx_len = RX_BUF_SIZE - __HAL_DMA_GET_COUNTER(huart6.hdmarx);	// 수신된 길이 계산
+		  if(uart6_rx_len == 0)	continue;							// 메시지 없으면 무시
+	      if(rxBuf[uart6_rx_len - 1] == '\n') uart6_rx_len--;		// 메시지 끝 개행(\n) 제거
 
 	      // 화면 출력
-	      if(uart6_rx_len > old)
+	      if(uart6_rx_len > old)	 // RX_BUF_SIZE보다 작은 메시지가 들어올 때
 	      {
 	    	  printf(">>Received: %.*s\r\n", uart6_rx_len-old, &rxBuf[old]);
-	    	  memcpy(msg_temp, &rxBuf[old], uart6_rx_len-old);
+	    	  memcpy(msg_temp, &rxBuf[old], uart6_rx_len-old);		// msg_temp에 rxBuf를 copy
 	      }
-	      else
+	      else	// RX_BUF_SIZE보다 큰 메시지가 들어올 때
 	      {
 		      printf("Received: %.*s", RX_BUF_SIZE-old, &rxBuf[old]);
 		      memcpy(msg_temp, &rxBuf[old], RX_BUF_SIZE-old);
@@ -396,12 +460,16 @@ int main(void)
 		      }
 		      printf("\r\n");
 	      }
-	      processMessage(msg_temp);
-	      old = uart6_rx_len+1;
+
+//	      memcpy(msg_temp, &rxBuf, size-2);
+	      processMessage(msg_temp);		// msg_temp에 따라 기능 처리
+	      old = uart6_rx_len+1;		// old : 이전 메시지의 마지막 부분
 
 	      memset(msg_temp, 0, sizeof(msg_temp));
 	  }
 
+#endif
+	  //=== 진동 반복 처리 ===
 	 if(vib_flag)
 	 {
 		 if(Vib_PulsePattern())
@@ -414,6 +482,11 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
+
+
+
+
+
   }
   /* USER CODE END 3 */
 }
@@ -462,6 +535,44 @@ void SystemClock_Config(void)
   {
     Error_Handler();
   }
+}
+
+/**
+  * @brief SPI2 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_SPI2_Init(void)
+{
+
+  /* USER CODE BEGIN SPI2_Init 0 */
+
+  /* USER CODE END SPI2_Init 0 */
+
+  /* USER CODE BEGIN SPI2_Init 1 */
+
+  /* USER CODE END SPI2_Init 1 */
+  /* SPI2 parameter configuration*/
+  hspi2.Instance = SPI2;
+  hspi2.Init.Mode = SPI_MODE_MASTER;
+  hspi2.Init.Direction = SPI_DIRECTION_2LINES;
+  hspi2.Init.DataSize = SPI_DATASIZE_8BIT;
+  hspi2.Init.CLKPolarity = SPI_POLARITY_LOW;
+  hspi2.Init.CLKPhase = SPI_PHASE_1EDGE;
+  hspi2.Init.NSS = SPI_NSS_SOFT;
+  hspi2.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_8;
+  hspi2.Init.FirstBit = SPI_FIRSTBIT_MSB;
+  hspi2.Init.TIMode = SPI_TIMODE_DISABLE;
+  hspi2.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
+  hspi2.Init.CRCPolynomial = 10;
+  if (HAL_SPI_Init(&hspi2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN SPI2_Init 2 */
+
+  /* USER CODE END SPI2_Init 2 */
+
 }
 
 /**
@@ -678,7 +789,10 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOB_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOA, RC522_CS_Pin|LD2_Pin, GPIO_PIN_RESET);
+
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(RC522_RST_GPIO_Port, RC522_RST_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin : B1_Pin */
   GPIO_InitStruct.Pin = B1_Pin;
@@ -686,12 +800,19 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(B1_GPIO_Port, &GPIO_InitStruct);
 
-  /*Configure GPIO pin : LD2_Pin */
-  GPIO_InitStruct.Pin = LD2_Pin;
+  /*Configure GPIO pins : RC522_CS_Pin LD2_Pin */
+  GPIO_InitStruct.Pin = RC522_CS_Pin|LD2_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(LD2_GPIO_Port, &GPIO_InitStruct);
+  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : RC522_RST_Pin */
+  GPIO_InitStruct.Pin = RC522_RST_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(RC522_RST_GPIO_Port, &GPIO_InitStruct);
 
   /* USER CODE BEGIN MX_GPIO_Init_2 */
 
@@ -713,12 +834,13 @@ PUTCHAR_PROTOTYPE
   return ch;
 }
 
+/* === UART 메시지 인터럽트로 처리 === */
 //void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 //{
 //	if(huart->Instance == USART6)	// USART6에서 인터럽트 발생했을 때 처리
 //	{
 //		if(rx_ch == '\n')
-//		{
+//		 {
 //			uart6_flag = 1;
 //		}
 //		else
@@ -733,25 +855,29 @@ PUTCHAR_PROTOTYPE
 //	}
 //}
 
-//void USART6_IRQHandler(void)
-//{
-//    HAL_UART_IRQHandler(&huart6);  // DMA RX 처리
-//
-//    if(__HAL_UART_GET_FLAG(&huart6, UART_FLAG_IDLE))
-//    {
-//        __HAL_UART_CLEAR_IDLEFLAG(&huart6);
-//        uart6_flag = 1;
-//
-////        // 메시지 길이 계산
-////        uint16_t len = RX_BUF_SIZE - __HAL_DMA_GET_COUNTER(huart6.hdmarx);
-////
-////        // UART2 DMA 전송
-////        HAL_UART_Transmit_DMA(&huart2, (uint8_t*)rxBuf, len);
-////
-////        // 필요 시 버퍼 초기화
-////        memset(rxBuf, 0, RX_BUF_SIZE);
-//    }
-//}
+/* === UART DMA로 처리 === */
+// void USART6_IRQHandler(void)		// stm32f4xx_it.c안에 구현
+// {
+//		if (__HAL_UART_GET_FLAG(&huart6, UART_FLAG_IDLE)) {
+//			__HAL_UART_CLEAR_IDLEFLAG(&huart6);
+//			  uart6_flag = 1;  // main 루프에서 처리
+//		}
+//		HAL_UART_IRQHandler(&huart6);
+// }
+// -> 옛날 방식
+
+
+void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size)
+{
+	if(huart->Instance == USART6)
+	{
+		  memcpy(msg_temp, &rxBuf, Size-1);
+	      processMessage(msg_temp);					// msg_temp에 따라 기능 처리
+	      memset(msg_temp, 0, sizeof(msg_temp));
+
+	      HAL_UARTEx_ReceiveToIdle_DMA(&huart6, rxBuf, RX_BUF_SIZE);
+	}
+}
 
 /* USER CODE END 4 */
 
