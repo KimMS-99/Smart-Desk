@@ -172,7 +172,7 @@ void servo_setAngle(uint8_t angle);
 /* 들어오는 메시지 처리 */
 void processMessage(char* msg)
 {
-#if 0
+#if 1
 	/*=== 문자열 파싱 ===*/
 	int i = 0;
 	char * pToken;
@@ -231,7 +231,7 @@ void processMessage(char* msg)
 		}
 	}
 #endif
-#if 1
+#if 0
 	if(strcmp(msg, "unlock") == 0)
 	{
 		servo_unlock();		// 서랍 잠금해제
@@ -245,31 +245,18 @@ void processMessage(char* msg)
 	else if(strcmp(msg, "sleeping") == 0)
 	{
 	    printf("Running Vibration...\r\n");
-//	    for(int i = 0; i < 5; i ++)
-//	    {
-//		    Vib_PulsePattern(); // "두두둑" 패턴 실행
-//		    HAL_Delay(800);
-//	    }
-
-	    //vib_repeat = 5;		// 5번 반복
-	    //vib_flag = 1;		// 진동 시작
-
 	    osEventFlagsSet(vibEventHandle, VIB_ON);	// vibEventHandle에 VIB_ON 이벤트 발생
 	}
 
 	else if(strcmp(msg, "2") == 0)		// 좋은 자세일 때
 	{
 		printf("Running monitor reset...\r\n");
-//		__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_3, 2500);
-//		send_status("monitor reset\n");	// 상태 회신 : 모니터 원상복구
 		osEventFlagsSet(posEventHandle, POSTURE_OK);	// posEventHandle에 POSTURE_OK 이벤트 발생
 	}
 
 	else if(strcmp(msg, "1") == 0)		// 나쁜 자세일 때
 	{
 		printf("Running monitor tilt...\r\n");
-//		__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_3, 2200);
-//		send_status("monitor tilted up\n");	// 상태 회신 : 모니터 강제 조절 성공
 		osEventFlagsSet(posEventHandle, POSTURE_BAD);	// posEventHandle에 POSTURE_BAD 이벤트 발생
 	}
 	else
@@ -277,7 +264,6 @@ void processMessage(char* msg)
 		printf(">>> unknown \r\n");
 	}
 #endif
-
 }
 
 /* 메시지 전송 */
@@ -514,88 +500,8 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-////========= RFID 체크 ===============
-//		status = MFRC522_Request(PICC_REQIDL, str);		// 카드 타입
-//
-//		if (status == MI_OK && card_present == 0)   // 카드가 감지됨
-//		{
-//		    status = MFRC522_Anticoll(str);			// 카드 UID : str[0] ~ [4]에 저장
-//		    if (status == MI_OK)   // UID 읽기 성공
-//		    {
-//		    	card_present = 1;	// 카드 감지된 상태
-//
-//		        // UID를 문자열로 변환
-//	            sprintf(uid_str, "%02X%02X%02X%02X", str[0], str[1], str[2], str[3]);
-//	            printf("Card UID: %s\r\n", uid_str);
-//
-//	            sprintf(uid_msg, "STM32:none:RFID:%s\n", uid_str);
-//	            printf("uid_msg : %s\r\n", uid_msg);
-//
-//	            // Pi로 전송
-//	            send_status(uid_msg);
-//
-//	            HAL_Delay(5000);
-//	            card_present = 0;	// 카드 인식되지 않은 상태
-//		    }
-//		}
-//
-//========= pi에서 메시지 들어온 경우 처리 ================
-// 	-> 옛날 방식
-#if 0
-	  if(uart6_flag)
-	  {
-		  uart6_flag = 0;
-
-		//=== DMA 처리 ===
-		  uart6_rx_len = RX_BUF_SIZE - __HAL_DMA_GET_COUNTER(huart6.hdmarx);	// 수신된 길이 계산
-		  if(uart6_rx_len == 0)	continue;							// 메시지 없으면 무시
-	      if(rxBuf[uart6_rx_len - 1] == '\n') uart6_rx_len--;		// 메시지 끝 개행(\n) 제거
-
-	      // 화면 출력
-	      if(uart6_rx_len > old)	 // RX_BUF_SIZE보다 작은 메시지가 들어올 때
-	      {
-	    	  printf(">>Received: %.*s\r\n", uart6_rx_len-old, &rxBuf[old]);
-	    	  memcpy(msg_temp, &rxBuf[old], uart6_rx_len-old);		// msg_temp에 rxBuf를 copy
-	      }
-	      else	// RX_BUF_SIZE보다 큰 메시지가 들어올 때
-	      {
-		      printf("Received: %.*s", RX_BUF_SIZE-old, &rxBuf[old]);
-		      memcpy(msg_temp, &rxBuf[old], RX_BUF_SIZE-old);
-		      if(uart6_rx_len) {
-		    	  printf("%.*s", uart6_rx_len, &rxBuf[0]);
-		    	  memcpy(msg_temp, &rxBuf[old], uart6_rx_len);
-		      }
-		      printf("\r\n");
-	      }
-
-//	      memcpy(msg_temp, &rxBuf, size-2);
-	      processMessage(msg_temp);		// msg_temp에 따라 기능 처리
-	      old = uart6_rx_len+1;		// old : 이전 메시지의 마지막 부분
-
-	      memset(msg_temp, 0, sizeof(msg_temp));
-	  }
-
-#endif
-#if 0
-	  //=== 진동 반복 처리 ===
-	 if(vib_flag)
-	 {
-		 if(Vib_PulsePattern())
-		 {
-			 vib_repeat--;
-			 if(vib_repeat <= 0) { vib_flag = 0; }
-		 }
-	 }
-#endif
-
     /* USER CODE END WHILE */
-
     /* USER CODE BEGIN 3 */
-
-
-
-
-
   }
   /* USER CODE END 3 */
 }
@@ -1096,38 +1002,6 @@ void StartVibTask(void *argument)
 	  }
 	  send_status("vibration finished\n");	// 상태 회신 : 진동 성공
 
-#if 0
-	  //=== 진동 반복 처리 ===
-	 if(vib_flag)
-	 {
-		 // Vib_PulsePattern 함수 안
-		     for (int i=0;i<3;i++) {
-		         Motor_SetDutyPercent(50);
-//		         HAL_Delay(500);
-		         vTaskDelay(pdMS_TO_TICKS(500));
-		         Motor_SetDutyPercent(0);
-//		         HAL_Delay(100);
-		         vTaskDelay(pdMS_TO_TICKS(100));
-		         printf(">> Debug : vibration \r\n");
-		     }
-		     printf(">> vib_repeat : %d \r\n", vib_repeat);
-		     vib_repeat--;
-		     if(vib_repeat <= 0) { vib_flag = 0; }
-//	while문 안
-//		 if(Vib_PulsePattern())
-//		 {
-//			 vib_repeat--;
-//			 if(vib_repeat <= 0) { vib_flag = 0; }
-//		 }
-	 }
-	 else{
-		 vTaskDelay(pdMS_TO_TICKS(10));
-	 }
-	 //    for (int i=0;i<3;i++) {
-	 //        Motor_SetDutyPercent(50); HAL_Delay(500);
-	 //        Motor_SetDutyPercent(0);  HAL_Delay(100);
-	 //    }
-#endif
     osDelay(1);
   }
   /* USER CODE END StartVibTask */
