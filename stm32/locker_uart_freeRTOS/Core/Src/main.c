@@ -59,14 +59,13 @@ TIM_HandleTypeDef htim3;
 UART_HandleTypeDef huart2;
 UART_HandleTypeDef huart6;
 DMA_HandleTypeDef hdma_usart6_rx;
-DMA_HandleTypeDef hdma_usart6_tx;
 
 /* Definitions for UartTask */
 osThreadId_t UartTaskHandle;
 const osThreadAttr_t UartTask_attributes = {
   .name = "UartTask",
   .stack_size = 256 * 4,
-  .priority = (osPriority_t) osPriorityNormal,
+  .priority = (osPriority_t) osPriorityHigh,
 };
 /* Definitions for RfidTask */
 osThreadId_t RfidTaskHandle;
@@ -93,6 +92,11 @@ const osThreadAttr_t PostureTask_attributes = {
 osMessageQueueId_t uartQueueHandle;
 const osMessageQueueAttr_t uartQueue_attributes = {
   .name = "uartQueue"
+};
+/* Definitions for uartMutex */
+osMutexId_t uartMutexHandle;
+const osMutexAttr_t uartMutex_attributes = {
+  .name = "uartMutex"
 };
 /* Definitions for vibEvent */
 osEventFlagsId_t vibEventHandle;
@@ -128,15 +132,13 @@ char* msg = msg_temp;
 
 // RFID
 uint8_t cardID[5];
-char uid_str[16];
-static volatile int authentication_flag = 0;
-static volatile int auth_start_time = -1; // 인증 시작 시점의 tim3Sec 저장
-static uint8_t card_present = 0;
+
 
 //uint8_t status;
 //uint8_t str[16];
 uint8_t sNum[5];
 
+char uid_str[16];
 char uid_msg[TX_BUF_SIZE];
 
 /* USER CODE END PV */
@@ -170,66 +172,81 @@ void servo_setAngle(uint8_t angle);
 /* USER CODE BEGIN 0 */
 
 /* 들어오는 메시지 처리 */
-void processMessage(char* msg)
+void processMessage(char *msg)
 {
 #if 1
-	/*=== 문자열 파싱 ===*/
-	int i = 0;
-	char * pToken;
-	char * pArray[ARR_CNT]={0};
+	  /*=== 문자열 파싱 ===*/
+	  if (msg == NULL || strlen(msg) == 0)
+	  {
+		printf("Error: Empty or NULL message received\r\n");
+		return;
+	  }
 
-	printf("Original Received : %s\r\n", msg);
+	  char buf[RX_BUF_SIZE];
+	  strncpy(buf, msg, RX_BUF_SIZE - 1); // 안전한 복사
+	  buf[RX_BUF_SIZE - 1] = '\0';        // 널 종료 보장
 
-	pToken = strtok(msg,":");
-	while(pToken != NULL)
-	{
-	    pArray[i] = pToken;
-	    if(++i >= ARR_CNT)
-	      break;
-	    pToken = strtok(NULL,":");
-	}
-	if(!strcmp(pArray[2],"DRAWER"))
-	{
-	 	if(!strcmp(pArray[3],"UNLOCK"))
-	  	{
-	  		printf(">>>>>debug : unlock\r\n");
-			servo_unlock();		// 서랍 잠금해제
-			send_status("unlocked success\n");	// 상태 회신 : 잠금해제 성공
-	  	}
-		else if(!strcmp(pArray[3],"LOCK"))
+	  printf("Original Received: %s\r\n", buf);
+
+	  char *pArray[ARR_CNT] = {0};
+	  char *saveptr = NULL;
+	  char *pToken = strtok_r(buf, ":", &saveptr);
+	  int i = 0;
+	  while (pToken && i < ARR_CNT)
+	  {
+		pArray[i++] = pToken;
+		pToken = strtok_r(NULL, ":", &saveptr);
+	  }
+
+	  // 토큰 수가 충분한지 확인
+	  if (i < 4)
+	  {
+		printf("Error: Invalid message format, too few tokens (%d)\r\n", i);
+		return;
+	  }
+
+	  if (!strcmp(pArray[2], "DRAWER"))
+	  {
+		if (!strcmp(pArray[3], "UNLOCK"))
 		{
-			printf(">>>>>debug : lock\r\n");
-			servo_lock();		// 서랍 잠금
-			send_status("locked success\n");	// 상태 회신 : 잠금 성공
+		  printf(">>>>>debug : unlock\r\n");
+		  servo_unlock();                    // 서랍 잠금해제
+		  send_status("unlocked success\n"); // 상태 회신 : 잠금해제 성공
 		}
-	}
-	if(!strcmp(pArray[2],"SLP"))
-	{
-	 	if(!strcmp(pArray[3],"ON"))
-	  	{
-	  		printf(">>>>>debug : sleeping \r\n");
-		    osEventFlagsSet(vibEventHandle, VIB_ON);	// vibEventHandle에 VIB_ON 이벤트 발생
-	  	}
-		else if(!strcmp(pArray[3],"OFF"))
+		else if (!strcmp(pArray[3], "LOCK"))
 		{
-			printf(">>>>>debug : No sleeping \r\n");
+		  printf(">>>>>debug : lock\r\n");
+		  servo_lock();                    // 서랍 잠금
+		  send_status("locked success\n"); // 상태 회신 : 잠금 성공
 		}
-	}
-	if(!strcmp(pArray[2],"POSTURE"))
-	{
-	 	if(!strcmp(pArray[3],"BAD"))
-	  	{
-	  		printf(">>>>>debug : bad posture \r\n");
-	  		printf("Running monitor tilt...\r\n");
-	  		osEventFlagsSet(posEventHandle, POSTURE_BAD);	// posEventHandle에 POSTURE_BAD 이벤트 발생
-	  	}
-		else if(!strcmp(pArray[3],"OK"))
+	  }
+	  if (!strcmp(pArray[2], "SLP"))
+	  {
+		if (!strcmp(pArray[3], "ON"))
 		{
-			printf(">>>>>debug : good posture \r\n");
-			printf("Running monitor reset...\r\n");
-			osEventFlagsSet(posEventHandle, POSTURE_OK);	// posEventHandle에 POSTURE_OK 이벤트 발생
+		  printf(">>>>>debug : sleeping \r\n");
+		  osEventFlagsSet(vibEventHandle, VIB_ON); // vibEventHandle에 VIB_ON 이벤트 발생
 		}
-	}
+		else if (!strcmp(pArray[3], "OFF"))
+		{
+		  printf(">>>>>debug : No sleeping \r\n");
+		}
+	  }
+	  if (!strcmp(pArray[2], "POSTURE"))
+	  {
+		if (!strcmp(pArray[3], "BAD"))
+		{
+		  printf(">>>>>debug : bad posture \r\n");
+		  printf("Running monitor tilt...\r\n");
+		  osEventFlagsSet(posEventHandle, POSTURE_BAD); // posEventHandle에 POSTURE_BAD 이벤트 발생
+		}
+		else if (!strcmp(pArray[3], "OK"))
+		{
+		  printf(">>>>>debug : good posture \r\n");
+		  printf("Running monitor reset...\r\n");
+		  osEventFlagsSet(posEventHandle, POSTURE_OK); // posEventHandle에 POSTURE_OK 이벤트 발생
+		}
+	  }
 #endif
 #if 0
 	if(strcmp(msg, "unlock") == 0)
@@ -269,7 +286,9 @@ void processMessage(char* msg)
 /* 메시지 전송 */
 void send_status(const char *status)
 {
+//	osMutexAcquire(uartMutexHandle, osWaitForever);
 	HAL_UART_Transmit(&huart6, (uint8_t*)status, strlen(status), HAL_MAX_DELAY);
+//	osMutexRelease(uartMutexHandle);
 }
 
 /*================== 잠금서랍 기능 ==================*/
@@ -442,6 +461,9 @@ int main(void)
 
   /* Init scheduler */
   osKernelInitialize();
+  /* Create the mutex(es) */
+  /* creation of uartMutex */
+  uartMutexHandle = osMutexNew(&uartMutex_attributes);
 
   /* USER CODE BEGIN RTOS_MUTEX */
   /* add mutexes, ... */
@@ -480,7 +502,6 @@ int main(void)
   /* add threads, ... */
   /* USER CODE END RTOS_THREADS */
 
-  /* Create the event(s) */
   /* creation of vibEvent */
   vibEventHandle = osEventFlagsNew(&vibEvent_attributes);
 
@@ -501,6 +522,7 @@ int main(void)
   while (1)
   {
     /* USER CODE END WHILE */
+
     /* USER CODE BEGIN 3 */
   }
   /* USER CODE END 3 */
@@ -779,9 +801,6 @@ static void MX_DMA_Init(void)
   /* DMA2_Stream1_IRQn interrupt configuration */
   HAL_NVIC_SetPriority(DMA2_Stream1_IRQn, 5, 0);
   HAL_NVIC_EnableIRQ(DMA2_Stream1_IRQn);
-  /* DMA2_Stream6_IRQn interrupt configuration */
-  HAL_NVIC_SetPriority(DMA2_Stream6_IRQn, 5, 0);
-  HAL_NVIC_EnableIRQ(DMA2_Stream6_IRQn);
 
 }
 
@@ -835,17 +854,27 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
-/**
-  * @brief  Retargets the C library printf function to the USART.
-  * @param  None
-  * @retval None
-  */
+osMutexId_t uart2PrintMutex;
+
 PUTCHAR_PROTOTYPE
 {
-  /* Place your implementation of fputc here */
-  /* e.g. write a character to the USART6 and Loop until the end of transmission */
-  HAL_UART_Transmit(&huart2, (uint8_t *)&ch, 1, 0xFFFF);
-
+  uint8_t c = (uint8_t)ch;
+  if (osKernelGetState() == osKernelRunning && uart2PrintMutex)
+  {
+    if (osMutexAcquire(uart2PrintMutex, 50) == osOK)
+    {
+      HAL_UART_Transmit(&huart2, &c, 1, 50);
+      osMutexRelease(uart2PrintMutex);
+    }
+    else
+    {
+      HAL_UART_Transmit(&huart2, &c, 1, 10);
+    }
+  }
+  else
+  {
+    HAL_UART_Transmit(&huart2, &c, 1, 0xFFFF);
+  }
   return ch;
 }
 
@@ -885,18 +914,19 @@ void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size)
 {
 	if(huart->Instance == USART6)
 	{
+// Non-freeRTOS
 //		  memcpy(msg_temp, &rxBuf, Size-1);
 //	      processMessage(msg_temp);					// msg_temp에 따라 기능 처리
 //	      memset(msg_temp, 0, sizeof(msg_temp));
 //
 //	      HAL_UARTEx_ReceiveToIdle_DMA(&huart6, rxBuf, RX_BUF_SIZE);
 
+		printf("[DBG] uart receive test \r\n");
 		memcpy(msg_temp, &rxBuf, Size-1);	// '\n' 제거
 		msg_temp[Size - 1] = '\0';			// 널문자 추가
 		osMessageQueuePut(uartQueueHandle, msg_temp, 0, 0);		// FreeRTOS 큐로 메시지 전달
 		//memset(msg_temp, 0, sizeof(msg_temp));
 		HAL_UARTEx_ReceiveToIdle_DMA(&huart6, rxBuf, RX_BUF_SIZE);	// IDLE인터럽트 다시 활성화
-
 	}
 }
 
@@ -916,12 +946,14 @@ void StartUartTask(void *argument)
   /* Infinite loop */
   for(;;)
   {
+	  printf("[DBG] UartTask waiting...\r\n");
 	  	// 큐에 데이터가 없으면 block 상태가 됨 (Task가 실행을 멈추고 대기함)
 	      if (osMessageQueueGet(uartQueueHandle, recvBuf, NULL, osWaitForever) == osOK)
 	      {
+	    	  printf("[DBG] UartTask: msg received: %s\r\n", recvBuf);
 	          processMessage(recvBuf);  // 큐에서 메시지 꺼내서 processMessage(메시지처리) 함수 호출
 	      }
-    osDelay(1);
+    osDelay(100);
   }
   /* USER CODE END 5 */
 }
@@ -938,15 +970,21 @@ void StartRfidTask(void *argument)
   /* USER CODE BEGIN StartRfidTask */
 	uint8_t status;
 	uint8_t str[16];
+	static uint8_t card_present = 0;
+
+
 
   /* Infinite loop */
   for(;;)
   {
 	  //========= RFID 체크 ===============
+//	  	  printf("[DBG] RfidTask running...\r\n");
 	  		status = MFRC522_Request(PICC_REQIDL, str);		// 주기적으로 카드 감지 요청
 
 	  		if (status == MI_OK && card_present == 0)   // 카드가 감지됨
 	  		{
+	  			printf("[DBG] RfidTask: card detected!\r\n");
+
 	  		    status = MFRC522_Anticoll(str);			// 카드 UID 읽기: str[0] ~ [4]에 저장
 	  		    if (status == MI_OK)   // UID 읽기 성공
 	  		    {
@@ -961,11 +999,12 @@ void StartRfidTask(void *argument)
 	  	            printf("uid_msg : %s\r\n", uid_msg);
 	  	            send_status(uid_msg);
 
-	  	            vTaskDelay(pdMS_TO_TICKS(3000));	// task 3초 대기(block) 후 다시 카드 감지
+	  	            osDelay(3000);	// task 3초 대기(block) 후 다시 카드 감지
 	  	            card_present = 0;	// 카드 인식되지 않은 상태
 	  		    }
 	  		}
-    osDelay(1);
+//	  		printf("[DBG] RfidTask end...\r\n");
+    osDelay(100);
   }
   /* USER CODE END StartRfidTask */
 }
@@ -984,8 +1023,10 @@ void StartVibTask(void *argument)
   for(;;)
   {
 	  // VIB_ON 이벤트가 올 때까지 Task가 무한 대기
+	  printf("[DBG] VibTask waiting...\r\n");
 	  osEventFlagsWait(vibEventHandle, VIB_ON, osFlagsWaitAny, osWaitForever);
 
+	  printf("[DBG] VibTask triggered...\r\n");
 	  // 이벤트가 들어오면 아래 코드 실행
 	  send_status("vibration started\n");	// 상태 회신 : 진동 시작
 	  for(int r = 0; r < 5; r++)		// r = 진동 패턴 반복 횟수
@@ -993,16 +1034,18 @@ void StartVibTask(void *argument)
 		  for(int i = 0; i < 3; i++)
 		  {
 			  Motor_SetDutyPercent(50);
-			  vTaskDelay(pdMS_TO_TICKS(500));
+//			  vTaskDelay(pdMS_TO_TICKS(500));
+			  osDelay(500);
 			  Motor_SetDutyPercent(0);
-			  vTaskDelay(pdMS_TO_TICKS(100));
+//			  vTaskDelay(pdMS_TO_TICKS(100));
+			  osDelay(100);
 			  printf(">> Debug : vibration \r\n");
 		  }
 		  printf(">> vib_repeat : %d \r\n", r);
 	  }
 	  send_status("vibration finished\n");	// 상태 회신 : 진동 성공
 
-    osDelay(1);
+    osDelay(100);
   }
   /* USER CODE END StartVibTask */
 }
@@ -1021,7 +1064,9 @@ void StartPostureTask(void *argument)
   /* Infinite loop */
   for(;;)
   {
+//	  printf("[DBG] PostureTask waiting...\r\n");
 	  posture_flag = osEventFlagsWait(posEventHandle, POSTURE_BAD | POSTURE_OK, osFlagsWaitAny, osWaitForever);
+	  printf("[DBG] PostureTask triggered: flag=0x%lx\r\n", posture_flag);
 
 	  if(posture_flag & POSTURE_BAD)
 	  {
@@ -1034,7 +1079,7 @@ void StartPostureTask(void *argument)
 		  send_status("monitor reset\n");
 	  }
 
-	  osDelay(1);
+	  osDelay(100);
   }
   /* USER CODE END StartPostureTask */
 }
