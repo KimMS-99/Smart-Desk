@@ -92,7 +92,7 @@ def processing_loop(app_state: AppState, sock, mjpg_url: str, cam_index:int, mjp
     mp_face = mp.solutions.face_mesh
     mp_pose = mp.solutions.pose
     face_mesh = mp_face.FaceMesh(static_image_mode=False, max_num_faces=1,
-                                 refine_landmarks=True, min_detection_confidence=0.5, min_tracking_confidence=0.5)
+                                 refine_landmarks=True, min_detection_confidence=0.05, min_tracking_confidence=0.05)
     pose = mp_pose.Pose(model_complexity=0, static_image_mode=False,
                        min_detection_confidence=0.5, min_tracking_confidence=0.5)
 
