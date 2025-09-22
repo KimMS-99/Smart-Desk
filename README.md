@@ -1,16 +1,153 @@
-# Intel Project Team4
+# 사용자의 얼굴 및 자세, 행동 인식을 통한 Smart Desk
+Intel Edge AI Team 4
 
-진행 관련해서 궁금한점이나 Jira 및 깃 사용법이 궁금하신 분은 언제든 편하게 물어봐주세요.
+## 프로젝트 기능
+- 올바른 자세를 유도해서 장시간 업무 가능
+- 졸음 감지를 통한 사용자 깨우기
+- 사용자가 자리를 비웠을 경우 물건 도난 방지
+- 출퇴근 기능을 활용한 확실한 출퇴근 시간 기록
 
-**[Jira](https://isdnket.atlassian.net/jira/software/projects/IN/boards/37)**
-보드에서 "해야 할 일"을 보시고 현재 진행중인 일을 "해야 할 일"에서 "진행 중"으로 옮겨서 작업해주시고 사용하시는 branch에서 push 하기전에 저한테 한번 말해주시면 됩니다. 그 후 완료된 Task는 보드에서 "완료"항목에 넣어주시면 됩니다.
+## 팀 구성 및 역할
+|팀원|역할
+|:---:|:---|
+|[김민수](https://github.com/KimMS-99)|프로젝트 총괄 관리<br>라즈베리파이 slot기반 A/B fallback 구현
+|[조아빈](https://github.com/abin1303)|STM32 기반 하드웨어 제어 펌웨어 설계 및 구현 <br>FreeRTOS를 이용한 태스크 관리 및 멀티태스킹 구조 설계 <br>CPU 부하를 줄이고 실시간성을 확보하기 위한 DMA/인터럽트 기반 데이터 처리 구조 구현
+|[설영현](https://github.com/seol1006a)|UART 디바이스 드라이버 작성 및 직렬 통신 구현<br>AI 모듈, Qt 애플리케이션과의 TCP/소켓 통신 서버 개발<br>DB 설계 및 관리
+|[서우진](https://github.com/Woojin5020)|mediapipe Facemesh 모델을 통한 얼굴 인증 및 사용자 인식, 졸음 감지 구현<br>mediapipe pose 모델을 활용한 거북목 자세 인식
+|[이호빈](https://github.com/hb1no)|
 
-**[notion](https://www.notion.so/2620a75193b48098926fe4872a97b9c4)**
-Jira에 페이지에도 회의 내용이나 계획등을 올릴 거지만 노션이 편하시면 노션에도 최대한 빨리 정리해서 올릴 예정이니 편하신 곳에서 보시면 됩니다.
+## 개발 일정
+![개발 일정](./docs/images/schedule.png)
 
-README는 최종적으로 프로젝트가 완성이 되면
-- 프로젝트 한 줄 소개
-- 핵심 기능 요약
-- 플로우차트
+## 시스템 아키텍처
+![시스템 아키텍처](./docs/images/arch.png)
 
-등등 해서 넣을 예정이며 README에 들어가야 한다고 생각하는 내용이 있는데 빠진것이 있으면 말씀해주시면 감사하겠습니다.
+## 설치 및 환경 설정
+### 2.1. AI 모델 (Target: Ubuntu/Jetson)
+
+AI 모델은 사용자의 자세, 졸음, 부재 여부를 감지합니다. Ubuntu 데스크톱 환경과 NVIDIA Jetson 환경에 맞게 각각 설정해야 합니다.
+
+#### 2.1.1. 공통 패키지 설치
+
+```bash
+# 시스템 라이브러리 설치
+sudo apt-get update
+sudo apt-get install -y python3-pip cmake libjpeg8-dev
+```
+
+#### 2.1.2. Python 의존성 설치
+
+- **Ubuntu 환경인 경우:**
+  ```bash
+  pip3 install -r ai/woojin/intel7_team4/requirements/ubuntu/requirements.txt
+  ```
+
+- **NVIDIA Jetson 환경인 경우:**
+  ```bash
+  pip3 install -r ai/woojin/intel7_team4/requirements/jetson/requirements.txt
+  ```
+
+#### 2.1.3. MJPG-Streamer 설치 (웹캠 스트리밍)
+
+AI 모델이 웹캠 영상을 사용하기 위해 `mjpg-streamer`를 설치합니다.
+
+```bash
+# 소스 코드 폴더로 이동
+cd ai/woojin/intel7_team4/annotation/AUTH_neck_eye_QT/mjpg-streamer-master/mjpg-streamer-experimental
+
+# 빌드 및 설치
+make
+sudo make install
+```
+
+#### 2.1.4. 실행
+
+- **자세 인식 모델 실행 (예시):**
+  ```bash
+  python3 ai/hobin/run_yolov8_posture_web.py
+  ```
+- **메인 AI 애플리케이션 실행 (예시):**
+  ```bash
+  python3 ai/woojin/intel7_team4/last_test/main.py
+  ```
+
+---
+
+### 2.2. Qt GUI 애플리케이션 (Target: Ubuntu Desktop)
+
+사용자 인터페이스를 제공하는 Qt 애플리케이션을 설정합니다.
+
+#### 2.2.1. 필요 라이브러리 설치
+
+```bash
+sudo apt-get update
+sudo apt-get install -y qtbase5-dev qtmultimedia5-dev libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev
+```
+
+#### 2.2.2. 빌드 및 실행
+
+```bash
+# 프로젝트 폴더로 이동
+cd Qt/Intel_project_team4
+
+# qmake를 사용하여 Makefile 생성
+qmake
+
+# 빌드
+make
+
+# 실행
+./Intel_project_team4
+```
+
+---
+
+### 2.3. Raspberry Pi 서버 및 드라이버 (Target: Raspberry Pi)
+
+Raspberry Pi에서 동작하는 메인 서버와 UART 디바이스 드라이버를 설정합니다.
+
+#### 2.3.1. 필요 라이브러리 설치
+
+```bash
+sudo apt-get update
+sudo apt-get install -y build-essential libmysqlclient-dev raspberrypi-kernel-headers
+```
+
+#### 2.3.2. 서버 빌드
+
+```bash
+# 서버 프로젝트 폴더로 이동
+cd rpi/Sever
+
+# 빌드
+make
+```
+
+#### 2.3.3. 실행
+
+- **서버 실행:**
+  ```bash
+  ./rpi/Sever/server
+  ```
+- **드라이버 모듈 로드:**
+  ```bash
+  sudo insmod rpi/device_driver/uart3_driver_irq.ko
+  ```
+
+---
+
+### 2.4. STM32 펌웨어 (Target: STM32F411RE)
+
+RFID 카드 리더 및 잠금장치를 제어하는 펌웨어입니다.
+![STM32 ioc](./docs/images/STM32Ioc.png)
+
+#### 2.4.1. 빌드 및 업로드
+
+- **STM32CubeIDE** 또는 **VSCode**와 같은 개발 환경에서 `stm32/locker_uart_freeRTOS` 프로젝트를 열어 빌드 및 업로드합니다.
+
+## 문서 및 프로토콜
+
+*   **통신 프로토콜**: 시스템 모듈 간의 통신 규약은 [`docs/protocol.md`](./docs/protocol.md)에 상세히 정의되어 있습니다.
+*   **A/B 업데이트**: [`docs/AB_fallback.md`](./docs/AB_fallback.md) 문서에 A/B 파티션 기반의 업데이트 및 롤백 전략이 기술되어 있습니다.
+*   **시스템 아키텍처**: 자세한 시스템 아키텍처는 [`docs/System_Architecture.md`](./docs/System_Architecture.md)에 적혀 있습니다.
+*   **영상 및 발표자료**: 동작 영상, PPT, 발표 영상은 `media/`에 있습니다.
