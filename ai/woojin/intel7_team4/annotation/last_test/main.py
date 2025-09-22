@@ -157,9 +157,9 @@ def main():
             print("[MAIN] FACE_FLAG == 0 -> performing local auth before starting mjpg/processing")
             mp_face = __import__("mediapipe").solutions.face_mesh
             face_mesh = mp_face.FaceMesh(static_image_mode=False, max_num_faces=1,
-                                         refine_landmarks=True, min_detection_confidence=0.5, min_tracking_confidence=0.5)
+                                         refine_landmarks=True, min_detection_confidence=0.05, min_tracking_confidence=0.05)
             try:
-                ok = run_auth_local(face_mesh, args.cam_index, timeout=30.0)
+                ok = run_auth_local(face_mesh, args.cam_index, timeout=60.0)
                 print("[MAIN] local auth result:", ok)
                 if ok:
                     try:
