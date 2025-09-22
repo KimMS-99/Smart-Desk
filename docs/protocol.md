@@ -4,11 +4,11 @@
 [SRC]:[USER]:[TYPE]:[STATE]:[DETAIL]
 ```
 
-`SRC` : 누가 보냈는지(AI, SERVER)
-`USER` : 인식된 사용자 ID. 없으면 none
-`TYPE` : FACE / POSTURE / SLP
-`STAT`: OK / IN / OUT / CHECK / BAD … (대문자 권장)
-`DETAIL` : 선택 필드(자세 세부값 등)
+`SRC` : 누가 보냈는지(AI, SERVER)<br>
+`USER` : 인식된 사용자 ID. 없으면 none<Br>
+`TYPE` : FACE / POSTURE / SLP<br>
+`STAT`: OK / IN / OUT / CHECK / BAD … (대문자 권장)<br>
+`DETAIL` : 선택 필드(자세 세부값 등)<br>
 
 ## AI → Server(TCP)
 
