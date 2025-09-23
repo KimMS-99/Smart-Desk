@@ -173,7 +173,7 @@ RFID 카드 리더 및 잠금장치를 제어하는 펌웨어입니다.
 
 ## 문서 및 프로토콜
 
-- 통신 규약: docs/protocol.md
-- 시스템 설계: docs/Architecture_Sequence.md
-- A/B 업데이트(U-Boot, rollback): docs/AB_fallback.md
-- 시연 영상/PPT: media/ (Git LFS)
+- 통신 규약: [docs/protocol.md](./docs/protocol.md)
+- 시스템 설계: [docs/Architecture_Sequence.md](./docs/Architecture_Sequence.md)
+- A/B 업데이트(U-Boot, rollback): [docs/AB_fallback.md](./docs/AB_fallback.md)
+- 시연 영상/PPT: [media/](./media/) (Git LFS)
