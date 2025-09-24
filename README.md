@@ -11,8 +11,8 @@ Intel Edge AI Team 4
 |팀원|역할
 |:---:|:---|
 |[김민수](https://github.com/KimMS-99)|프로젝트 총괄 관리<br>라즈베리파이 U-Boot slot기반 A/B fallback 구현
-|[조아빈](https://github.com/abin1303)|STM32 기반 하드웨어 제어 펌웨어 설계 및 구현 <br>FreeRTOS를 이용한 태스크 관리 및 멀티태스킹 구조 설계 <br>CPU 부하를 줄이고 실시간성을 확보하기 위한 DMA/인터럽트 기반 데이터 처리 구조 구현
-|[설영현](https://github.com/seol1006a)|UART 디바이스 드라이버 작성 및 직렬 통신 구현<br>AI 모듈, Qt 애플리케이션과의 TCP/소켓 통신 서버 개발<br>DB 설계 및 관리
+|[조아빈](https://github.com/abin1303)|STM32 기반 하드웨어 제어 펌웨어 설계 및 구현 <br>FreeRTOS를 이용한 태스크 관리 및 멀티태스킹 구조 설계 <br>CPU 부하를 줄이고 실시간성을 확보하기 위한 DMA/인터럽트 기반 데이터 처리 구조 구현<br>Qt GUI 구현
+|[설영현](https://github.com/seol1006a)|UART 디바이스 드라이버 작성 및 직렬 통신 구현<br>AI 모듈, Qt 애플리케이션과의 TCP/소켓 통신 서버 개발<br>DB 설계 및 관리<br>Qt GUI 구현
 |[서우진](https://github.com/Woojin5020)|mediapipe Facemesh 모델을 통한 얼굴 인증 및 사용자 인식, 졸음 감지 구현<br>mediapipe pose 모델을 활용한 거북목 자세 인식
 |[이호빈](https://github.com/hb1no) |YOLOv8s + 자체 데이터셋(400장, COCO) 기반 커스텀 자세 인식 모델 설계·학습 <br> YOLOv8n-pose(프리트레인 COCO-17)로 웹캠 실시간 추정<br> 허리굽음/다리꼬기 판별 구현<br> Flask MJPEG 스트리밍·TensorRT 최적화·IoT 신호 연동 <br>커스텀 vs 프리트레인 모델 비교·성능 검증(앉은 환경 특화 vs 일반 상황 안정성)
 
